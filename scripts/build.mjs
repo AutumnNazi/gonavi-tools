@@ -53,7 +53,7 @@ const manifest = {
   id: 'gh-autumnnazi.toolbox',
   name: '开发者工具箱',
   version: pkg.version,
-  description: '纯前端开发者工具箱：JSON、Cron、时间戳、哈希、Base64、URL、JWT、正则、文本与进制转换，全部在本机完成，不联网、无后端进程。',
+  description: '开发时随手要用的 15 个工具箱：JSON 格式化与校验、Cron 表达式解析与生成、时间戳转换、MD5/SHA 哈希、Base64 与 URL 编解码、JWT 解码、正则测试、文本处理与进制转换。全部在本机完成，不联网、无后端进程。',
   author: 'AutumnNazi',
   license: 'MIT',
   // 与同作者的其它插件保持一致：声明最低宿主版本，并带一个包内图标
@@ -61,8 +61,8 @@ const manifest = {
   icon: 'icons/toolbox.png',
   permissions: ['ui.pages', 'ui.html-panel'],
   permissionNotes: {
-    'ui.pages': '在标题栏插件菜单里加入工具箱入口，并在主窗口以标签页打开。',
-    'ui.html-panel': '用沙箱 HTML 页面渲染工具界面，页面内计算全部在本地完成。'
+    'ui.pages': '声明一个 workbench 标签页，并用 contributes.navigation(location: tools) 在标题栏插件菜单加入入口。',
+    'ui.html-panel': '在标签页里渲染内联 HTML 工具界面；页面不联网、不读写宿主存储、不访问数据库。'
   },
   contributes: {
     pages: [
@@ -84,6 +84,13 @@ fs.rmSync(packageDir, { recursive: true, force: true });
 fs.mkdirSync(path.join(packageDir, 'icons'), { recursive: true });
 fs.writeFileSync(path.join(packageDir, 'gonavi.plugin.json'), manifestText, 'utf8');
 fs.copyFileSync(path.join(root, 'assets/toolbox.png'), path.join(packageDir, 'icons/toolbox.png'));
+
+// 作者指南要求压缩包根目录随包分发 LICENSE；用了第三方资源片段还要附声明。
+for (const name of ['LICENSE', 'THIRD_PARTY_NOTICES']) {
+  const source = path.join(root, name);
+  if (!fs.existsSync(source)) { throw new Error('缺少必须随包分发的文件：' + name); }
+  fs.copyFileSync(source, path.join(packageDir, name));
+}
 
 console.log('已构建 ' + toolFiles.length + ' 个工具（lib ' + libFiles.length + ' 个文件）');
 console.log('  dist/preview.html      ' + pageBytes + ' 字节 / 上限 262144');

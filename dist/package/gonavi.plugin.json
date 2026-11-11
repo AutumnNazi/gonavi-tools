@@ -4,7 +4,7 @@
   "id": "gh-autumnnazi.toolbox",
   "name": "开发者工具箱",
   "version": "0.1.0",
-  "description": "纯前端开发者工具箱：JSON、Cron、时间戳、哈希、Base64、URL、JWT、正则、文本与进制转换，全部在本机完成，不联网、无后端进程。",
+  "description": "开发时随手要用的 15 个工具箱：JSON 格式化与校验、Cron 表达式解析与生成、时间戳转换、MD5/SHA 哈希、Base64 与 URL 编解码、JWT 解码、正则测试、文本处理与进制转换。全部在本机完成，不联网、无后端进程。",
   "author": "AutumnNazi",
   "license": "MIT",
   "minHostVersion": "1.2.0",
@@ -14,8 +14,8 @@
     "ui.html-panel"
   ],
   "permissionNotes": {
-    "ui.pages": "在标题栏插件菜单里加入工具箱入口，并在主窗口以标签页打开。",
-    "ui.html-panel": "用沙箱 HTML 页面渲染工具界面，页面内计算全部在本地完成。"
+    "ui.pages": "声明一个 workbench 标签页，并用 contributes.navigation(location: tools) 在标题栏插件菜单加入入口。",
+    "ui.html-panel": "在标签页里渲染内联 HTML 工具界面；页面不联网、不读写宿主存储、不访问数据库。"
   },
   "contributes": {
     "pages": [
