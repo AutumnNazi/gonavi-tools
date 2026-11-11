@@ -106,7 +106,7 @@
         ui.col(ui.label('右侧（对比）'), right)
       ));
       root.appendChild(ui.row(
-        ui.button('对比', compare, 'primary'),
+        ui.button('对比', compare),
         ui.button('交换左右', swap),
         ui.button('清空', function () {
           left.value = '';
@@ -123,8 +123,7 @@
       root.appendChild(statsRow);
       root.appendChild(rowsBox);
       root.appendChild(tip);
-      root.appendChild(ui.hint('绿色为新增行，红色为删除行，灰色为未改动行；算法为 LCS 行级对比，' +
-        '相同的前后缀会先剪掉再比对，因此大文本只改少量内容时依然很快。'));
+      root.appendChild(ui.hint('绿色新增、红色删除、灰色未改动；行级对比，相同的前后缀会先剪掉。'))
     }
   });
 })(GN);

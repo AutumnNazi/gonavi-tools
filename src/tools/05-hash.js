@@ -173,8 +173,7 @@
       root.appendChild(tableMsg);
       root.appendChild(ui.field('比对哈希值', compareInput));
       root.appendChild(compareMsg);
-      root.appendChild(ui.hint('输出统一小写十六进制；比对时会忽略大小写与所有空白，' +
-        '因此从日志里带空格复制的哈希值也能直接粘贴。SHA-1 只建议用于校验与兼容场景，需要防篡改请用 SHA-256。'));
+      root.appendChild(ui.hint('输出小写十六进制；比对时忽略大小写与空白。SHA-1 仅建议用于兼容场景。'))
 
       refresh();
     }

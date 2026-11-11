@@ -196,7 +196,7 @@
 
       root.appendChild(ui.row(
         ui.label('时间戳'), stampInput, unitSelect,
-        ui.button('转换', convert, 'primary'),
+        ui.button('转换', convert),
         ui.button('填入当前秒', function () { fill(Math.floor(Date.now() / 1000), 's'); }),
         ui.button('填入当前毫秒', function () { fill(Date.now(), 'ms'); }),
         ui.spacer()
@@ -215,9 +215,7 @@
       ));
       root.appendChild(message);
       root.appendChild(resultBox);
-      root.appendChild(ui.hint('时间戳按位数识别：10 位以内当秒，11 位以上当毫秒，也可以手动指定。' +
-        '日期字符串按本地时区解析，所以 2024-01-01 就是本机 1 月 1 日 0 点，不会被当成 UTC 零点；' +
-        '带 Z 或 +08:00 这类显式偏移的写法按偏移计算。北京时间固定按 UTC+8 显示，与本机时区无关。'));
+      root.appendChild(ui.hint('10 位当秒、13 位当毫秒；日期字符串按本机时区解析，北京时间固定 UTC+8。'))
 
       refreshNow();
     }

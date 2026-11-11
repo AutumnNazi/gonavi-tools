@@ -8,6 +8,8 @@
   var RUN_COUNT = 10;
   var WEEK_NAMES = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
   var TEMPLATES = [
+    { label: '每 30 秒', expr: '*/30 * * * * *' },
+    { label: '每天 9 点整（含秒）', expr: '0 0 9 * * *' },
     { label: '每分钟', expr: '* * * * *' },
     { label: '每 5 分钟', expr: '*/5 * * * *' },
     { label: '每小时整点', expr: '0 * * * *' },
@@ -45,7 +47,7 @@
     id: 'cron',
     group: 'time',
     title: 'Cron 解析',
-    desc: '拆解 5 段表达式、中文描述与下次执行时间',
+    desc: '拆解 5 段（crontab）或 6 段（Quartz / Spring）表达式',
     api: {
       validate: function (expr) { return cron.validate(expr); },
       parse: function (expr) {
@@ -62,7 +64,10 @@
     },
     mount: function (root) {
       var ui = GN.ui;
-      var input = ui.input({ placeholder: '5 段标准表达式，例如 0 9 * * 1-5', value: '*/5 * * * *' });
+      var input = ui.input({
+        placeholder: '5 段：0 9 * * 1-5 ｜ 6 段（含秒）：0 0 9 * * 1-5',
+        value: '0 0 9 * * 1-5'
+      });
       var message = ui.msg();
       var descOut = ui.output();
       var fieldBox = ui.col();
@@ -117,7 +122,7 @@
 
       root.appendChild(ui.row(
         ui.label('表达式'), input,
-        ui.button('解析', render, 'primary'),
+        ui.button('解析', render),
         ui.copyButton(function () { return input.value; }, '复制表达式'),
         ui.spacer()
       ));
@@ -129,9 +134,7 @@
       root.appendChild(ui.scroll(fieldBox));
       root.appendChild(runTitle);
       root.appendChild(ui.scroll(runBox));
-      root.appendChild(ui.hint('语法：分 时 日 月 周，支持 * , - / 以及月份 JAN-DEC、星期 SUN-SAT，? 等同 *（0 和 7 都表示周日）。' +
-        'L / W / # 这类扩展语法不支持，会直接报错而不是当成 * 处理。' +
-        '日和星期都写成具体值时按标准 cron 的「或」语义执行：满足其一即执行，中文描述里会写出来。'));
+      root.appendChild(ui.hint('5 段与 6 段按字段个数识别；支持 * , - / 与月份、星期的英文名，? 等同 *。L / W / # 与年份会报错。'))
 
       render();
     }

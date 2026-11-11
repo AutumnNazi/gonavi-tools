@@ -197,7 +197,7 @@
         ui.field('随机十六进制字节数（1..512）', hexInput)
       ));
       root.appendChild(ui.row(
-        ui.button('生成 UUID v4', generateUuid, 'primary'),
+        ui.button('生成 UUID v4', generateUuid),
         ui.button('生成 NanoID 随机串', generateNanoid),
         ui.button('生成随机十六进制', generateHex),
         ui.spacer(),
@@ -211,9 +211,7 @@
       ));
       root.appendChild(message);
       root.appendChild(output);
-      root.appendChild(ui.hint('随机源：' + source.label + '。' +
-        (source.degraded ? '宿主未提供 getRandomValues，已降级为伪随机，' + '不要用于密钥、令牌等安全场景。' : '') +
-        'UUID v4 的版本位固定为 4、变体位固定为 8/9/a/b；去连字符与大小写只影响显示。'));
+      root.appendChild(ui.hint('宿主未提供随机源时会降级为伪随机，不要用于密钥或令牌。'))
     }
   });
 })(GN);

@@ -17,6 +17,7 @@
   --bg-input: #ffffff;
   --bg-soft: #f7f8fa;
   --bg-sunken: #f1f3f5;
+  --hover: #f1f3f5;
   --border: #e3e6ea;
   --border-strong: #cfd4da;
 
@@ -47,6 +48,7 @@
     --bg-input: #1b1d1f;
     --bg-soft: #222528;
     --bg-sunken: #17191b;
+    --hover: #26292c;
     --border: #34383c;
     --border-strong: #454a4f;
 
@@ -169,10 +171,6 @@ html, body {
 }
 .tb-btn:hover { border-color: var(--brand); color: var(--brand); }
 .tb-btn:active { transform: translateY(1px); }
-.tb-btn--primary { background: var(--brand); border-color: var(--brand); color: var(--brand-text); font-weight: 600; }
-.tb-btn--primary:hover {
-  color: var(--brand-text); border-color: var(--brand); filter: brightness(.93);
-}
 .tb-btn--danger:hover { border-color: var(--danger); color: var(--danger); }
 .tb-btn:disabled { opacity: .5; cursor: not-allowed; }
 
@@ -332,17 +330,29 @@ var GN = { tools: [], lib: {}, groups: [] };
 })(GN);
 
 /* ===== src/lib/cron.js ===== */
-/* Cron 核心：5 段标准表达式（分 时 日 月 周）的解析、校验、中文描述与下次执行时间推算。
+/* Cron 核心：解析、校验、中文描述与下次执行时间推算，同时支持两种主流写法：
+     - 5 段（分 时 日 月 周）：Linux crontab / Vixie，Kubernetes CronJob、Jenkins 同理
+     - 6 段（秒 分 时 日 月 周）：Quartz、Spring @Scheduled 的写法
+   按字段个数自动识别，5 段等价于把秒固定为 0。
    纯逻辑，不碰 DOM，页面与 Node 单测共用同一份实现（挂到 GN.lib.cron）。
    字段语法支持 * , - / ，月份可用 JAN-DEC ，星期可用 SUN-SAT ，? 等同 * ；
-   L / W / # 等扩展语法不支持，遇到直接抛中文错误，绝不静默当成 * 处理。
-   日与周都不以 * 开头时按标准 Vixie cron 的「或」语义计算：两者满足其一即执行。 */
+   L / W / # 与第 7 段年份不支持，遇到直接抛中文错误，绝不静默当成 * 处理。
+   日与周都不以 * 开头时按 Vixie 的「或」语义计算：两者满足其一即执行。 */
 (function (GN) {
   'use strict';
 
-  var FIELD_NAMES = ['分钟', '小时', '日', '月', '星期'];
-  var FIELD_LOW = [0, 0, 1, 1, 0];
-  var FIELD_HIGH = [59, 23, 31, 12, 7];
+  // 字段用类型而非位置标识：5 段与 6 段里同一个位置的字段含义不同，靠类型才不会错位。
+  var FIELD_SPECS = {
+    second: { name: '秒', low: 0, high: 59, alias: null },
+    minute: { name: '分钟', low: 0, high: 59, alias: null },
+    hour: { name: '小时', low: 0, high: 23, alias: null },
+    day: { name: '日', low: 1, high: 31, alias: null },
+    month: { name: '月', low: 1, high: 12, alias: 'month' },
+    week: { name: '星期', low: 0, high: 7, alias: 'week' }
+  };
+  var FIVE_FIELDS = ['minute', 'hour', 'day', 'month', 'week'];
+  var SIX_FIELDS = ['second', 'minute', 'hour', 'day', 'month', 'week'];
+
   var MONTH_ALIAS = { JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6, JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12 };
   var WEEK_ALIAS = { SUN: 0, MON: 1, TUE: 2, WED: 3, THU: 4, FRI: 5, SAT: 6 };
   var WEEK_NAMES = ['日', '一', '二', '三', '四', '五', '六'];
@@ -355,7 +365,9 @@ var GN = { tools: [], lib: {}, groups: [] };
 
   function fail(message) { throw new Error(message); }
 
-  function fieldLabel(index) { return '第 ' + (index + 1) + ' 段（' + FIELD_NAMES[index] + '）'; }
+  function fieldLabel(field, position) {
+    return '第 ' + (position + 1) + ' 段（' + field.name + '）';
+  }
 
   function stepOf(normalized) {
     var matched = /^\*\/(\d+)$/.exec(normalized);
@@ -391,27 +403,33 @@ var GN = { tools: [], lib: {}, groups: [] };
 
   function fieldText(field) {
     var step = stepOf(field.norm);
-    if (field.index === 0) {
-      if (field.norm === '*') { return '每分钟'; }
+    var any = field.norm === '*';
+    if (field.kind === 'second') {
+      if (any) { return '每秒'; }
+      if (step) { return '每 ' + step + ' 秒'; }
+      return '第 ' + formatRanges(field.values) + ' 秒';
+    }
+    if (field.kind === 'minute') {
+      if (any) { return '每分钟'; }
       if (step) { return '每 ' + step + ' 分钟'; }
       return '第 ' + formatRanges(field.values) + ' 分钟';
     }
-    if (field.index === 1) {
-      if (field.norm === '*') { return '每小时'; }
+    if (field.kind === 'hour') {
+      if (any) { return '每小时'; }
       if (step) { return '每 ' + step + ' 小时'; }
       return formatRanges(field.values) + ' 点';
     }
-    if (field.index === 2) {
-      if (field.norm === '*') { return '每天（不限）'; }
+    if (field.kind === 'day') {
+      if (any) { return '每天（不限）'; }
       if (step) { return '每 ' + step + ' 天（从 1 号起）'; }
       return '每月 ' + formatRanges(field.values) + ' 日';
     }
-    if (field.index === 3) {
-      if (field.norm === '*') { return '每月'; }
+    if (field.kind === 'month') {
+      if (any) { return '每月'; }
       if (step) { return '每 ' + step + ' 个月'; }
       return '每年 ' + formatRanges(field.values) + ' 月';
     }
-    if (field.norm === '*') { return '每天（不限）'; }
+    if (any) { return '每天（不限）'; }
     if (step) { return '每 ' + step + ' 天（周日为起点）'; }
     return '每' + weekRanges(field.values);
   }
@@ -419,35 +437,37 @@ var GN = { tools: [], lib: {}, groups: [] };
   /* ---------------- 解析 ---------------- */
 
   // 去掉合法名称后还剩字母，说明用了 L / W 这类扩展写法：直接报错，不当成 * 也不当成具体值。
-  function rejectExtensions(index, normalized, raw) {
+  function rejectExtensions(kind, position, normalized, raw) {
     var rest = normalized.toUpperCase().replace(ALIAS_WORDS, '');
     if (!/[A-Z]/.test(rest)) { return; }
-    if (rest.indexOf('L') >= 0) { fail(fieldLabel(index) + '不支持 L（最后一天 / 最后一个星期几）扩展语法：' + raw); }
-    if (rest.indexOf('W') >= 0) { fail(fieldLabel(index) + '不支持 W（离指定日期最近的工作日）扩展语法：' + raw); }
+    var label = fieldLabel(FIELD_SPECS[kind], position);
+    if (rest.indexOf('L') >= 0) { fail(label + '不支持 L（最后一天 / 最后一个星期几）扩展语法：' + raw); }
+    if (rest.indexOf('W') >= 0) { fail(label + '不支持 W（离指定日期最近的工作日）扩展语法：' + raw); }
     // 其余字母交给取值解析，那里能报出更具体的原因（如步长必须为正整数）
   }
 
-  function resolveNumber(index, token, raw) {
+  function resolveNumber(kind, position, token, raw) {
     var text = String(token).toUpperCase();
     if (/^\d+$/.test(text)) { return parseInt(text, 10); }
-    var alias = index === 3 ? MONTH_ALIAS[text] : (index === 4 ? WEEK_ALIAS[text] : undefined);
+    var alias = kind === 'month' ? MONTH_ALIAS[text] : (kind === 'week' ? WEEK_ALIAS[text] : undefined);
     if (alias !== undefined) { return alias; }
-    fail(fieldLabel(index) + '里的「' + token + '」不是合法取值：' + raw);
+    fail(fieldLabel(FIELD_SPECS[kind], position) + '里的「' + token + '」不是合法取值：' + raw);
   }
 
-  function collectRange(flags, index, item, raw, low, high) {
+  function collectRange(flags, kind, position, item, raw, low, high) {
+    var label = fieldLabel(FIELD_SPECS[kind], position);
     var body = item;
     var step = 1;
     var slash = item.indexOf('/');
     if (slash >= 0) {
       body = item.slice(0, slash);
-      if (item.indexOf('/', slash + 1) >= 0) { fail(fieldLabel(index) + '的「' + item + '」出现多个 /：' + raw); }
+      if (item.indexOf('/', slash + 1) >= 0) { fail(label + '的「' + item + '」出现多个 /：' + raw); }
       var stepText = item.slice(slash + 1);
-      if (!/^\d+$/.test(stepText)) { fail(fieldLabel(index) + '的步长「' + stepText + '」必须是正整数：' + raw); }
+      if (!/^\d+$/.test(stepText)) { fail(label + '的步长「' + stepText + '」必须是正整数：' + raw); }
       step = parseInt(stepText, 10);
-      if (step < 1) { fail(fieldLabel(index) + '的步长必须大于 0：' + raw); }
+      if (step < 1) { fail(label + '的步长必须大于 0：' + raw); }
     }
-    if (body === '') { fail(fieldLabel(index) + '的「' + item + '」缺少 / 左边的取值：' + raw); }
+    if (body === '') { fail(label + '的「' + item + '」缺少 / 左边的取值：' + raw); }
     var start;
     var end;
     if (body === '*') {
@@ -456,43 +476,43 @@ var GN = { tools: [], lib: {}, groups: [] };
     } else {
       var dash = body.indexOf('-');
       if (dash >= 0) {
-        if (body.indexOf('-', dash + 1) >= 0) { fail(fieldLabel(index) + '的范围「' + body + '」出现多个横线：' + raw); }
-        start = resolveNumber(index, body.slice(0, dash), raw);
-        end = resolveNumber(index, body.slice(dash + 1), raw);
-        if (end < start) { fail(fieldLabel(index) + '的范围「' + body + '」起始值大于结束值：' + raw); }
+        if (body.indexOf('-', dash + 1) >= 0) { fail(label + '的范围「' + body + '」出现多个横线：' + raw); }
+        start = resolveNumber(kind, position, body.slice(0, dash), raw);
+        end = resolveNumber(kind, position, body.slice(dash + 1), raw);
+        if (end < start) { fail(label + '的范围「' + body + '」起始值大于结束值：' + raw); }
       } else {
-        start = resolveNumber(index, body, raw);
+        start = resolveNumber(kind, position, body, raw);
         // 「N/步长」按 N 到该字段最大值处理，与常见实现保持一致
         end = slash >= 0 ? high : start;
       }
     }
-    if (start < low || start > high) { fail(fieldLabel(index) + '的取值 ' + start + ' 超出 ' + low + '-' + high + '：' + raw); }
-    if (end < low || end > high) { fail(fieldLabel(index) + '的取值 ' + end + ' 超出 ' + low + '-' + high + '：' + raw); }
+    if (start < low || start > high) { fail(label + '的取值 ' + start + ' 超出 ' + low + '-' + high + '：' + raw); }
+    if (end < low || end > high) { fail(label + '的取值 ' + end + ' 超出 ' + low + '-' + high + '：' + raw); }
     for (var value = start; value <= end; value += step) { flags.push(value); }
   }
 
-  function parseField(index, raw) {
+  function parseField(kind, position, raw) {
+    var spec = FIELD_SPECS[kind];
     // ? 等同 *：语义就是「不限」，写法沿用 Quartz 习惯
     var normalized = String(raw).replace(/\?/g, '*');
-    if (!normalized) { fail(fieldLabel(index) + '是空的：' + raw); }
-    if (normalized.indexOf('#') >= 0) { fail(fieldLabel(index) + '不支持 #（第几个星期几）扩展语法：' + raw); }
-    rejectExtensions(index, normalized, raw);
-    var low = FIELD_LOW[index];
-    var high = FIELD_HIGH[index];
+    if (!normalized) { fail(fieldLabel(spec, position) + '是空的：' + raw); }
+    if (normalized.indexOf('#') >= 0) { fail(fieldLabel(spec, position) + '不支持 #（第几个星期几）扩展语法：' + raw); }
+    rejectExtensions(kind, position, normalized, raw);
     var flags = [];
     normalized.split(',').forEach(function (item) {
-      if (item === '') { fail(fieldLabel(index) + '有多余的逗号：' + raw); }
-      collectRange(flags, index, item, raw, low, high);
+      if (item === '') { fail(fieldLabel(spec, position) + '有多余的逗号：' + raw); }
+      collectRange(flags, kind, position, item, raw, spec.low, spec.high);
     });
     var hit = [];
     flags.forEach(function (value) { hit[value] = true; });
     // 星期里 7 与 0 都是周日，统一收进 0，判定与显示用同一份数据
-    if (index === 4 && hit[7]) { hit[0] = true; hit[7] = false; }
+    if (kind === 'week' && hit[7]) { hit[0] = true; hit[7] = false; }
     var values = [];
-    for (var value = low; value <= high; value++) { if (hit[value]) { values.push(value); } }
+    for (var value = spec.low; value <= spec.high; value++) { if (hit[value]) { values.push(value); } }
     var field = {
-      index: index,
-      name: FIELD_NAMES[index],
+      kind: kind,
+      name: spec.name,
+      position: position,
       raw: String(raw),
       norm: normalized,
       // 与 Vixie cron 一致：字段以 * 开头即算「不限」，它决定日与周之间是与还是或
@@ -508,8 +528,22 @@ var GN = { tools: [], lib: {}, groups: [] };
     var trimmed = source.trim();
     if (!trimmed) { fail('表达式不能为空'); }
     var parts = trimmed.split(/\s+/);
-    if (parts.length !== 5) { fail('必须是 5 个字段（分 时 日 月 周），当前 ' + parts.length + ' 个：' + trimmed); }
-    return parts.map(function (part, index) { return parseField(index, part); });
+    var kinds;
+    if (parts.length === 5) { kinds = FIVE_FIELDS; }
+    else if (parts.length === 6) { kinds = SIX_FIELDS; }
+    else {
+      fail('必须是 5 个字段（分 时 日 月 周）或 6 个字段（秒 分 时 日 月 周），当前 ' + parts.length + ' 个：' + trimmed);
+    }
+    var fields = parts.map(function (part, index) { return parseField(kinds[index], index, part); });
+    // 数组上带一个标记，调用方据此决定时间描述的粒度
+    fields.hasSeconds = parts.length === 6;
+    return fields;
+  }
+
+  function indexFields(fields) {
+    var by = {};
+    fields.forEach(function (field) { by[field.kind] = field; });
+    return by;
   }
 
   function validate(expr) {
@@ -551,37 +585,74 @@ var GN = { tools: [], lib: {}, groups: [] };
     return formatRanges(hour.values) + ' 点';
   }
 
-  function clockText(hours, minutes) {
+  function clockText(hours, minutes, seconds) {
     var list = [];
     for (var h = 0; h < hours.length; h++) {
-      for (var m = 0; m < minutes.length; m++) { list.push(pad2(hours[h]) + ':' + pad2(minutes[m])); }
+      for (var m = 0; m < minutes.length; m++) {
+        if (!seconds) {
+          list.push(pad2(hours[h]) + ':' + pad2(minutes[m]));
+          continue;
+        }
+        for (var s = 0; s < seconds.length; s++) {
+          list.push(pad2(hours[h]) + ':' + pad2(minutes[m]) + ':' + pad2(seconds[s]));
+        }
+      }
     }
     if (list.length > 12) { return list.slice(0, 12).join('、') + ' 等 ' + list.length + ' 个时刻'; }
     return list.join('、');
   }
 
-  function timePhrase(minute, hour) {
+  function timePhrase(minute, hour, second) {
     var minuteAny = minute.norm === '*';
     var hourAny = hour.norm === '*';
     var minuteStep = stepOf(minute.norm);
     var hourStep = stepOf(hour.norm);
-    if (minuteAny && hourAny) { return { text: '每分钟', clock: false }; }
+    if (minuteAny && hourAny) { return { text: '每分钟', clock: false, everyMinute: true }; }
     if (hourAny) {
-      if (minuteStep) { return { text: '每 ' + minuteStep + ' 分钟', clock: false }; }
-      return { text: '每小时的第 ' + formatRanges(minute.values) + ' 分钟', clock: false };
+      if (minuteStep) { return { text: '每 ' + minuteStep + ' 分钟', clock: false, everyMinute: false }; }
+      return { text: '每小时的第 ' + formatRanges(minute.values) + ' 分钟', clock: false, everyMinute: false };
     }
-    if (minuteAny) { return { text: hourText(hour) + '的每分钟', clock: false }; }
-    if (hourStep && minuteStep) { return { text: '每 ' + hourStep + ' 小时的每 ' + minuteStep + ' 分钟', clock: false }; }
-    if (hourStep) { return { text: '每 ' + hourStep + ' 小时的第 ' + formatRanges(minute.values) + ' 分钟', clock: false }; }
-    if (minuteStep) { return { text: formatRanges(hour.values) + ' 点的每 ' + minuteStep + ' 分钟', clock: false }; }
-    return { text: clockText(hour.values, minute.values), clock: true };
+    if (minuteAny) { return { text: hourText(hour) + '的每分钟', clock: false, everyMinute: false }; }
+    if (hourStep && minuteStep) { return { text: '每 ' + hourStep + ' 小时的每 ' + minuteStep + ' 分钟', clock: false, everyMinute: false }; }
+    if (hourStep) { return { text: '每 ' + hourStep + ' 小时的第 ' + formatRanges(minute.values) + ' 分钟', clock: false, everyMinute: false }; }
+    if (minuteStep) { return { text: formatRanges(hour.values) + ' 点的每 ' + minuteStep + ' 分钟', clock: false, everyMinute: false }; }
+    return {
+      text: clockText(hour.values, minute.values, second ? second.values : null),
+      clock: true,
+      everyMinute: false
+    };
+  }
+
+  // 6 段写法下把秒并进时间描述：秒固定就写进时刻，秒是范围或步长就单独说。
+  function mergeSeconds(time, second) {
+    if (!second) { return time; }
+    var secAny = second.norm === '*';
+    var secStep = stepOf(second.norm);
+    if (secAny) {
+      if (time.everyMinute) { return { text: '每秒', clock: false, everyMinute: true }; }
+      return { text: time.text + '的每一秒', clock: false, everyMinute: time.everyMinute };
+    }
+    if (secStep) {
+      if (time.everyMinute) { return { text: '每 ' + secStep + ' 秒', clock: false, everyMinute: false }; }
+      return { text: time.text + '的每 ' + secStep + ' 秒', clock: false, everyMinute: false };
+    }
+    if (time.clock) {
+      // 时刻里已经带了秒，text 由 clockText 生成
+      return { text: time.text, clock: true, everyMinute: false };
+    }
+    // 秒固定为 0 时不再赘述：0 * * * * * 与 5 段写法的 * * * * * 语义相同
+    if (second.values.length === 1 && second.values[0] === 0) {
+      return { text: time.text, clock: false, everyMinute: time.everyMinute };
+    }
+    return { text: time.text + '的第 ' + formatRanges(second.values) + ' 秒', clock: false, everyMinute: false };
   }
 
   function describe(expr) {
     var fields = parse(expr);
-    var day = dayPhrase(fields[2], fields[4], fields[3].norm !== '*');
-    var time = timePhrase(fields[0], fields[1]);
-    var month = monthPhrase(fields[3]);
+    var by = indexFields(fields);
+    var day = dayPhrase(by.day, by.week, by.month.norm !== '*');
+    var time = mergeSeconds(timePhrase(by.minute, by.hour, by.second), by.second);
+    var month = monthPhrase(by.month);
     var prefix = '';
     var dayPart = day.any ? '' : day.text + '的';
     if (month) {
@@ -598,6 +669,7 @@ var GN = { tools: [], lib: {}, groups: [] };
 
   function nextRuns(expr, count, fromDate) {
     var fields = parse(expr);
+    var by = indexFields(fields);
     var total = count === undefined || count === null ? 10 : Number(count);
     if (!isFinite(total) || Math.floor(total) !== total || total < 1) { fail('次数必须是正整数'); }
     if (total > 1000) { total = 1000; }
@@ -606,11 +678,13 @@ var GN = { tools: [], lib: {}, groups: [] };
     if (isNaN(from.getTime())) { fail('起始时间无效'); }
     var fromTime = from.getTime();
 
-    var minuteValues = fields[0].values;
-    var hourValues = fields[1].values;
-    var dom = fields[2];
-    var monthValues = fields[3].values;
-    var dow = fields[4];
+    // 5 段写法没有秒字段，等价于只匹配第 0 秒
+    var secondValues = by.second ? by.second.values : [0];
+    var minuteValues = by.minute.values;
+    var hourValues = by.hour.values;
+    var monthValues = by.month.values;
+    var dom = by.day;
+    var dow = by.week;
     // 日与周都以具体值开头才算「都被限定」，此时用或；只要有一边以 * 开头，另一边单独决定结果
     var dayOrMode = !dom.star && !dow.star;
 
@@ -640,20 +714,23 @@ var GN = { tools: [], lib: {}, groups: [] };
     var month = from.getMonth() + 1;
     var day = from.getDate();
     var weekDay = new Date(year, month - 1, day).getDay();
-    // 起始当天只取严格晚于起始分钟的时刻，之后的整天从头开始
-    var cutoff = from.getHours() * 60 + from.getMinutes();
+    // 起始当天只取严格晚于起始时刻的点，之后的整天从头开始；按秒计，5 段写法秒恒为 0
+    var cutoff = from.getHours() * 3600 + from.getMinutes() * 60 + from.getSeconds();
 
     for (var offset = 0; offset <= MAX_SEARCH_DAYS && results.length < total; offset++) {
       if (monthValues.indexOf(month) >= 0 && dayMatches(year, month, day, weekDay)) {
         for (var h = 0; h < hourValues.length && results.length < total; h++) {
-          for (var m = 0; m < minuteValues.length; m++) {
-            if (offset === 0 && hourValues[h] * 60 + minuteValues[m] <= cutoff) { continue; }
-            var candidate = new Date(year, month - 1, day, hourValues[h], minuteValues[m], 0, 0);
-            // 夏令时跳变会把不存在的本地时刻挪到别的钟点，这类时刻跳过而不是报错
-            if (candidate.getHours() !== hourValues[h] || candidate.getMinutes() !== minuteValues[m]) { continue; }
-            if (candidate.getTime() <= fromTime) { continue; }
-            results.push(candidate);
-            if (results.length >= total) { break; }
+          for (var m = 0; m < minuteValues.length && results.length < total; m++) {
+            for (var s = 0; s < secondValues.length; s++) {
+              if (offset === 0 && hourValues[h] * 3600 + minuteValues[m] * 60 + secondValues[s] <= cutoff) { continue; }
+              var candidate = new Date(year, month - 1, day, hourValues[h], minuteValues[m], secondValues[s], 0);
+              // 夏令时跳变会把不存在的本地时刻挪到别的钟点，这类时刻跳过而不是报错
+              if (candidate.getHours() !== hourValues[h] || candidate.getMinutes() !== minuteValues[m] ||
+                candidate.getSeconds() !== secondValues[s]) { continue; }
+              if (candidate.getTime() <= fromTime) { continue; }
+              results.push(candidate);
+              if (results.length >= total) { break; }
+            }
           }
         }
       }
@@ -1915,7 +1992,7 @@ var GN = { tools: [], lib: {}, groups: [] };
           message.show(result.message, result.ok ? 'ok' : 'error');
         }),
         ui.button('键排序', function () { run(function (t) { return sortJson(t, indentKey); }, '键排序'); }),
-        ui.button('格式化', function () { run(function (t) { return formatJson(t, indentKey); }, '格式化'); }, 'primary'),
+        ui.button('格式化', function () { run(function (t) { return formatJson(t, indentKey); }, '格式化'); }),
         ui.button('压缩', function () { run(minifyJson, '压缩'); }),
         ui.spacer(),
         indentSelect
@@ -1934,8 +2011,7 @@ var GN = { tools: [], lib: {}, groups: [] };
       ));
       root.appendChild(message);
       root.appendChild(output);
-      root.appendChild(ui.hint('转义输出的是带引号的 JSON 字符串字面量，可直接粘进 JSON 或代码。' +
-        '格式化会先解析再重建，超过 2^53 的整数可能丢精度，这种数据请用「校验」而不是「格式化」。'));
+      root.appendChild(ui.hint('转义输出带引号的 JSON 字面量；格式化会重建文本，超过 2^53 的整数可能丢精度。'))
     }
   });
 })(GN);
@@ -2038,7 +2114,7 @@ var GN = { tools: [], lib: {}, groups: [] };
       }
 
       root.appendChild(ui.row(
-        ui.button('编码为 Base64', function () { run(function (t) { return encodeText(t, urlSafe); }, '编码'); }, 'primary'),
+        ui.button('编码为 Base64', function () { run(function (t) { return encodeText(t, urlSafe); }, '编码'); }),
         ui.button('解码为文本', function () { run(function (t) { return decodeText(t, urlSafe); }, '解码'); }),
         ui.checkbox('URL-safe（- _ 且去掉 = 填充）', false, function (event) { urlSafe = event.target.checked; }),
         ui.spacer()
@@ -2056,8 +2132,7 @@ var GN = { tools: [], lib: {}, groups: [] };
       ));
       root.appendChild(message);
       root.appendChild(output);
-      root.appendChild(ui.hint('按 UTF-8 字节编解码，中文与 emoji 都能往返。开启 URL-safe 后使用 - 和 _，' +
-        '并去掉 = 填充；解码时两种字母表都能识别，非法 Base64 或非法 UTF-8 字节会直接报错而不是返回空串。'));
+      root.appendChild(ui.hint('按 UTF-8 编解码；URL-safe 用 - 和 _ 并去掉 = 填充。非法输入会报错，而不是返回空串。'))
     }
   });
 })(GN);
@@ -2202,7 +2277,7 @@ var GN = { tools: [], lib: {}, groups: [] };
       root.appendChild(ui.label('URI 编解码'));
       root.appendChild(uriInput);
       root.appendChild(ui.row(
-        ui.button('encodeURIComponent', function () { runUri(encodeComponent, '编码'); }, 'primary'),
+        ui.button('encodeURIComponent', function () { runUri(encodeComponent, '编码'); }),
         ui.button('decodeURIComponent', function () { runUri(decodeComponent, '解码'); }),
         ui.button('encodeURI', function () { runUri(encodeFull, '编码'); }),
         ui.button('decodeURI', function () { runUri(decodeFull, '解码'); }),
@@ -2211,8 +2286,7 @@ var GN = { tools: [], lib: {}, groups: [] };
       ));
       root.appendChild(uriMessage);
       root.appendChild(uriOutput);
-      root.appendChild(ui.hint('encodeURIComponent 会转义 : / ? # & = 等保留字符，适合编单个参数值；' +
-        'encodeURI 保留这些保留字符，适合编整条地址。'));
+      root.appendChild(ui.hint('编单个参数值用 encodeURIComponent，编整条地址用 encodeURI。'))
 
       var urlInput = ui.input({ placeholder: '输入完整 URL，例如 https 开头的地址', value: '' });
       var urlTable = ui.output();
@@ -2253,7 +2327,7 @@ var GN = { tools: [], lib: {}, groups: [] };
       root.appendChild(ui.label('完整 URL 解析'));
       root.appendChild(urlInput);
       root.appendChild(ui.row(
-        ui.button('解析 URL', showUrl, 'primary'),
+        ui.button('解析 URL', showUrl),
         ui.button('示例', function () {
           urlInput.value = 'https' + '://user:pw@例子.测试:8443/a/b?x=1&中文=%E4%B8%AD#片段';
           showUrl();
@@ -2315,7 +2389,7 @@ var GN = { tools: [], lib: {}, groups: [] };
       root.appendChild(ui.label('查询串 ↔ 参数表'));
       root.appendChild(queryInput);
       root.appendChild(ui.row(
-        ui.button('解析查询串', doParseQuery, 'primary'),
+        ui.button('解析查询串', doParseQuery),
         ui.button('拼成查询串', doBuildQuery),
         ui.copyButton(function () { return queryInput.value; }, '复制查询串'),
         ui.button('清空', function () {
@@ -2513,7 +2587,7 @@ var GN = { tools: [], lib: {}, groups: [] };
       root.appendChild(warning);
       root.appendChild(input);
       root.appendChild(ui.row(
-        ui.button('解码', run, 'primary'),
+        ui.button('解码', run),
         ui.copyButton(function () { return payloadOut.textContent; }, '复制 payload'),
         ui.button('清空', function () {
           input.value = '';
@@ -2540,8 +2614,7 @@ var GN = { tools: [], lib: {}, groups: [] };
         ui.label('签名'),
         signatureOut
       ));
-      root.appendChild(ui.hint('签名段在这里只做展示：JWT 的签名校验需要密钥，本插件不联网也不读取任何密钥。' +
-        'exp / nbf 按本机时区显示，相对时间以打开或刷新时刻为准。'));
+      root.appendChild(ui.hint('只做解码，不验证签名：校验签名需要密钥，本插件不联网也不读取密钥。'))
     }
   });
 })(GN);
@@ -2722,8 +2795,7 @@ var GN = { tools: [], lib: {}, groups: [] };
       root.appendChild(tableMsg);
       root.appendChild(ui.field('比对哈希值', compareInput));
       root.appendChild(compareMsg);
-      root.appendChild(ui.hint('输出统一小写十六进制；比对时会忽略大小写与所有空白，' +
-        '因此从日志里带空格复制的哈希值也能直接粘贴。SHA-1 只建议用于校验与兼容场景，需要防篡改请用 SHA-256。'));
+      root.appendChild(ui.hint('输出小写十六进制；比对时忽略大小写与空白。SHA-1 仅建议用于兼容场景。'))
 
       refresh();
     }
@@ -2929,7 +3001,7 @@ var GN = { tools: [], lib: {}, groups: [] };
 
       root.appendChild(ui.row(
         ui.label('时间戳'), stampInput, unitSelect,
-        ui.button('转换', convert, 'primary'),
+        ui.button('转换', convert),
         ui.button('填入当前秒', function () { fill(Math.floor(Date.now() / 1000), 's'); }),
         ui.button('填入当前毫秒', function () { fill(Date.now(), 'ms'); }),
         ui.spacer()
@@ -2948,9 +3020,7 @@ var GN = { tools: [], lib: {}, groups: [] };
       ));
       root.appendChild(message);
       root.appendChild(resultBox);
-      root.appendChild(ui.hint('时间戳按位数识别：10 位以内当秒，11 位以上当毫秒，也可以手动指定。' +
-        '日期字符串按本地时区解析，所以 2024-01-01 就是本机 1 月 1 日 0 点，不会被当成 UTC 零点；' +
-        '带 Z 或 +08:00 这类显式偏移的写法按偏移计算。北京时间固定按 UTC+8 显示，与本机时区无关。'));
+      root.appendChild(ui.hint('10 位当秒、13 位当毫秒；日期字符串按本机时区解析，北京时间固定 UTC+8。'))
 
       refreshNow();
     }
@@ -2968,6 +3038,8 @@ var GN = { tools: [], lib: {}, groups: [] };
   var RUN_COUNT = 10;
   var WEEK_NAMES = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
   var TEMPLATES = [
+    { label: '每 30 秒', expr: '*/30 * * * * *' },
+    { label: '每天 9 点整（含秒）', expr: '0 0 9 * * *' },
     { label: '每分钟', expr: '* * * * *' },
     { label: '每 5 分钟', expr: '*/5 * * * *' },
     { label: '每小时整点', expr: '0 * * * *' },
@@ -3005,7 +3077,7 @@ var GN = { tools: [], lib: {}, groups: [] };
     id: 'cron',
     group: 'time',
     title: 'Cron 解析',
-    desc: '拆解 5 段表达式、中文描述与下次执行时间',
+    desc: '拆解 5 段（crontab）或 6 段（Quartz / Spring）表达式',
     api: {
       validate: function (expr) { return cron.validate(expr); },
       parse: function (expr) {
@@ -3022,7 +3094,10 @@ var GN = { tools: [], lib: {}, groups: [] };
     },
     mount: function (root) {
       var ui = GN.ui;
-      var input = ui.input({ placeholder: '5 段标准表达式，例如 0 9 * * 1-5', value: '*/5 * * * *' });
+      var input = ui.input({
+        placeholder: '5 段：0 9 * * 1-5 ｜ 6 段（含秒）：0 0 9 * * 1-5',
+        value: '0 0 9 * * 1-5'
+      });
       var message = ui.msg();
       var descOut = ui.output();
       var fieldBox = ui.col();
@@ -3077,7 +3152,7 @@ var GN = { tools: [], lib: {}, groups: [] };
 
       root.appendChild(ui.row(
         ui.label('表达式'), input,
-        ui.button('解析', render, 'primary'),
+        ui.button('解析', render),
         ui.copyButton(function () { return input.value; }, '复制表达式'),
         ui.spacer()
       ));
@@ -3089,9 +3164,7 @@ var GN = { tools: [], lib: {}, groups: [] };
       root.appendChild(ui.scroll(fieldBox));
       root.appendChild(runTitle);
       root.appendChild(ui.scroll(runBox));
-      root.appendChild(ui.hint('语法：分 时 日 月 周，支持 * , - / 以及月份 JAN-DEC、星期 SUN-SAT，? 等同 *（0 和 7 都表示周日）。' +
-        'L / W / # 这类扩展语法不支持，会直接报错而不是当成 * 处理。' +
-        '日和星期都写成具体值时按标准 cron 的「或」语义执行：满足其一即执行，中文描述里会写出来。'));
+      root.appendChild(ui.hint('5 段与 6 段按字段个数识别；支持 * , - / 与月份、星期的英文名，? 等同 *。L / W / # 与年份会报错。'))
 
       render();
     }
@@ -3175,6 +3248,24 @@ var GN = { tools: [], lib: {}, groups: [] };
     }
   ];
 
+  // 秒字段只在勾选「6 段写法」时参与；结构与其它字段完全一致，拼装与校验复用同一套逻辑。
+  var SECOND_CONFIG = {
+    key: 'second',
+    name: '秒',
+    def: 'every',
+    step: 30,
+    custom: '0,30',
+    modes: [
+      { id: 'every', label: '每秒', value: '*', fixed: '每秒' },
+      { id: 'step', label: '每隔 N 秒', param: 'step', paramLabel: '每隔 N 秒（填 1-59 的整数）' },
+      { id: 'custom', label: '指定秒', param: 'custom', paramLabel: '秒列表（如 0,15,30 或 0-30/5）' }
+    ]
+  };
+
+  function activeFields(withSeconds) {
+    return withSeconds === true ? [SECOND_CONFIG].concat(FIELD_CONFIG) : FIELD_CONFIG.slice();
+  }
+
   function findMode(config, id) {
     for (var i = 0; i < config.modes.length; i++) {
       if (config.modes[i].id === id) { return config.modes[i]; }
@@ -3182,8 +3273,8 @@ var GN = { tools: [], lib: {}, groups: [] };
     return null;
   }
 
-  function defaultStates() {
-    return FIELD_CONFIG.map(function (config) {
+  function defaultStates(withSeconds) {
+    return activeFields(withSeconds).map(function (config) {
       return { mode: config.def, step: config.step, custom: config.custom };
     });
   }
@@ -3207,9 +3298,10 @@ var GN = { tools: [], lib: {}, groups: [] };
     return mode.value;
   }
 
-  function buildExpression(states) {
-    var list = states && states.length === FIELD_CONFIG.length ? states : defaultStates();
-    return FIELD_CONFIG.map(function (config, index) {
+  function buildExpression(states, withSeconds) {
+    var configs = activeFields(withSeconds);
+    var list = states && states.length === configs.length ? states : defaultStates(withSeconds);
+    return configs.map(function (config, index) {
       return fieldExpression(config, list[index]);
     }).join(' ');
   }
@@ -3228,12 +3320,16 @@ var GN = { tools: [], lib: {}, groups: [] };
     desc: '按字段预设拼出表达式，实时校验并预览执行时间',
     api: {
       fields: FIELD_CONFIG,
+      secondField: SECOND_CONFIG,
+      fieldsFor: activeFields,
       defaults: defaultStates,
       build: buildExpression
     },
     mount: function (root) {
       var ui = GN.ui;
-      var states = defaultStates();
+      // cron 的隐含写法就是 6 段（秒 分 时 日 月 周）；这个开关用来切回 5 段的 crontab 写法。
+      var withSeconds = true;
+      var states = defaultStates(withSeconds);
       var selects = [];
       var stepInputs = [];
       var customInputs = [];
@@ -3248,44 +3344,62 @@ var GN = { tools: [], lib: {}, groups: [] };
 
       // 五个字段铺成网格卡片：一行能放下多个字段，避免五个字段各占三行把界面撑长
       var fieldGrid = ui.grid();
-      root.appendChild(ui.hint('每个卡片是一个 Cron 字段：先选预设；只有预设需要用参数时才会出现输入框，输入框上方写了它的用途和可填格式。'));
 
-      FIELD_CONFIG.forEach(function (config, index) {
-        var select = ui.select(
-          config.modes.map(function (mode) { return { value: mode.id, label: mode.label }; }),
-          states[index].mode,
-          function () {
-            states[index].mode = select.value;
-            update();
-          }
-        );
-        var stepInput = ui.input({
-          type: 'number',
-          value: String(config.step),
-          oninput: function () {
-            states[index].step = stepInput.value;
-            update();
-          }
-        });
-        var customInput = ui.input({
-          value: config.custom,
-          placeholder: '例如 ' + config.custom,
-          oninput: function () {
-            states[index].custom = customInput.value;
-            update();
-          }
-        });
-        selects.push(select);
-        stepInputs.push(stepInput);
-        customInputs.push(customInput);
-        slots.push(ui.col());
-        fieldTexts.push(ui.label(''));
-        fieldGrid.appendChild(ui.col(ui.label(config.name), select, slots[index], fieldTexts[index]));
+      var fiveFieldToggle = ui.checkbox('用 5 段写法（分 时 日 月 周，不含秒）', false, function () {
+        withSeconds = !this.checked;
+        states = defaultStates(withSeconds);
+        buildCards();
+        update();
       });
+      root.appendChild(ui.row(ui.label('写法'), fiveFieldToggle, ui.spacer()));
+
+      // 卡片按当前写法重建：切到 6 段会多出「秒」卡片，切回 5 段时它直接不进入 DOM。
+      function buildCards() {
+        fieldGrid.textContent = '';
+        selects = [];
+        stepInputs = [];
+        customInputs = [];
+        slots = [];
+        fieldTexts = [];
+        renderedMode = [];
+        activeFields(withSeconds).forEach(function (config, index) {
+          var select = ui.select(
+            config.modes.map(function (mode) { return { value: mode.id, label: mode.label }; }),
+            states[index].mode,
+            function () {
+              states[index].mode = select.value;
+              update();
+            }
+          );
+          var stepInput = ui.input({
+            type: 'number',
+            value: String(config.step),
+            oninput: function () {
+              states[index].step = stepInput.value;
+              update();
+            }
+          });
+          var customInput = ui.input({
+            value: config.custom,
+            placeholder: '例如 ' + config.custom,
+            oninput: function () {
+              states[index].custom = customInput.value;
+              update();
+            }
+          });
+          selects.push(select);
+          stepInputs.push(stepInput);
+          customInputs.push(customInput);
+          slots.push(ui.col());
+          fieldTexts.push(ui.label(''));
+          fieldGrid.appendChild(ui.col(ui.label(config.name), select, slots[index], fieldTexts[index]));
+        });
+      }
+      buildCards();
       root.appendChild(fieldGrid);
 
       function currentMode(index) {
-        var config = FIELD_CONFIG[index];
+        var config = activeFields(withSeconds)[index];
         return findMode(config, states[index].mode) || findMode(config, config.def);
       }
 
@@ -3303,8 +3417,9 @@ var GN = { tools: [], lib: {}, groups: [] };
       }
 
       function update() {
-        for (var i = 0; i < FIELD_CONFIG.length; i++) { syncParam(i); }
-        var expr = buildExpression(states);
+        var configs = activeFields(withSeconds);
+        for (var i = 0; i < configs.length; i++) { syncParam(i); }
+        var expr = buildExpression(states, withSeconds);
         exprOut.setText(expr);
         checkBox.textContent = '';
         var checked = cron.validate(expr);
@@ -3340,8 +3455,8 @@ var GN = { tools: [], lib: {}, groups: [] };
       }
 
       function reset() {
-        states = defaultStates();
-        FIELD_CONFIG.forEach(function (config, index) {
+        states = defaultStates(withSeconds);
+        activeFields(withSeconds).forEach(function (config, index) {
           selects[index].value = states[index].mode;
           stepInputs[index].value = String(states[index].step);
           customInputs[index].value = states[index].custom;
@@ -3351,7 +3466,7 @@ var GN = { tools: [], lib: {}, groups: [] };
 
       root.appendChild(ui.row(
         ui.label('生成表达式'),
-        ui.copyButton(function () { return buildExpression(states); }, '复制表达式'),
+        ui.copyButton(function () { return buildExpression(states, withSeconds); }, '复制表达式'),
         ui.button('重置为默认', reset),
         ui.spacer()
       ));
@@ -3362,8 +3477,7 @@ var GN = { tools: [], lib: {}, groups: [] };
       root.appendChild(ui.label('接下来 ' + RUN_COUNT + ' 次执行时间（本地时区）'));
       root.appendChild(ui.scroll(runBox));
       root.appendChild(message);
-      root.appendChild(ui.hint('日与周都写成具体值时，按标准 cron 的「或」语义执行：满足其一即执行。' +
-        '自定义输入框留空会退回「不限」，所以任何时候生成的表达式都能通过校验。'));
+      root.appendChild(ui.hint('日与周都写成具体值时按「或」语义执行；自定义留空退回「不限」。'))
 
       update();
     }
@@ -3600,13 +3714,11 @@ var GN = { tools: [], lib: {}, groups: [] };
       root.appendChild(ui.scroll(listBox));
       root.appendChild(ui.row(
         ui.field('替换为', replaceInput),
-        ui.button('替换到原文', applyReplace, 'primary'),
+        ui.button('替换到原文', applyReplace),
         ui.copyButton(function () { return replaceOutput.textContent; }, '复制替换结果')
       ));
       root.appendChild(replaceOutput);
-      root.appendChild(ui.hint('勾选 g 时查找并高亮全部匹配，未勾选 g 只处理第一处（与 JS 语义一致）；' +
-        '替换则始终替换全部匹配。零宽匹配（例如 a*、^、(?=x)）没有可高亮的文本，用竖线标记出位置。' +
-        '高亮与清单都用 DOM 文本节点拼装，原文不会被当作 HTML 解析。'));
+      root.appendChild(ui.hint('未勾选 g 只处理第一处匹配；替换始终替换全部。零宽匹配用竖线标出位置。'))
 
       refresh();
     }
@@ -3747,9 +3859,7 @@ var GN = { tools: [], lib: {}, groups: [] };
       ));
       root.appendChild(message);
       root.appendChild(tableBox);
-      root.appendChild(ui.hint('字符数按 Unicode 代码点计（一个 emoji 记 1 个字符）；字节数按 UTF-8 编码规则计；' +
-        '行以 CRLF / LF / CR 分隔，末尾换行不额外算一行；中文字符只统计 CJK 统一表意文字（含扩展区与兼容汉字）；' +
-        '词数按空白字符分隔统计，因此整行中文会被记作 1 个词。'));
+      root.appendChild(ui.hint('字符按 Unicode 代码点计（emoji 记 1 个）；字节按 UTF-8；行按 CRLF / LF / CR 分隔。'))
 
       refresh();
     }
@@ -3865,7 +3975,7 @@ var GN = { tools: [], lib: {}, groups: [] };
         ui.col(ui.label('右侧（对比）'), right)
       ));
       root.appendChild(ui.row(
-        ui.button('对比', compare, 'primary'),
+        ui.button('对比', compare),
         ui.button('交换左右', swap),
         ui.button('清空', function () {
           left.value = '';
@@ -3882,8 +3992,7 @@ var GN = { tools: [], lib: {}, groups: [] };
       root.appendChild(statsRow);
       root.appendChild(rowsBox);
       root.appendChild(tip);
-      root.appendChild(ui.hint('绿色为新增行，红色为删除行，灰色为未改动行；算法为 LCS 行级对比，' +
-        '相同的前后缀会先剪掉再比对，因此大文本只改少量内容时依然很快。'));
+      root.appendChild(ui.hint('绿色新增、红色删除、灰色未改动；行级对比，相同的前后缀会先剪掉。'))
     }
   });
 })(GN);
@@ -4019,7 +4128,7 @@ var GN = { tools: [], lib: {}, groups: [] };
         ui.spacer()
       ));
       root.appendChild(ui.row(
-        ui.button('转 SQL IN 列表', function () { applyLines('转 IN 列表', toInList); }, 'primary'),
+        ui.button('转 SQL IN 列表', function () { applyLines('转 IN 列表', toInList); }),
         ui.button('清空', function () {
           input.value = '';
           message.clear();
@@ -4028,9 +4137,7 @@ var GN = { tools: [], lib: {}, groups: [] };
         ui.copyButton(function () { return input.value; })
       ));
       root.appendChild(message);
-      root.appendChild(ui.hint('所有操作都是就地处理当前文本，处理完可以继续叠加下一个操作。' +
-        '去重保留首次出现的顺序；排序按字符码序；去空行会把只有空白的行也去掉；合并为一行用你填的分隔符；' +
-        '转 SQL IN 列表会把每行包成 \'x\', 并把行内单引号转义成两个单引号。'));
+      root.appendChild(ui.hint('操作就地生效，可连续叠加；去重保留首次出现顺序，排序按字符码序。'));
     }
   });
 })(GN);
@@ -4235,7 +4342,7 @@ var GN = { tools: [], lib: {}, groups: [] };
         ui.field('随机十六进制字节数（1..512）', hexInput)
       ));
       root.appendChild(ui.row(
-        ui.button('生成 UUID v4', generateUuid, 'primary'),
+        ui.button('生成 UUID v4', generateUuid),
         ui.button('生成 NanoID 随机串', generateNanoid),
         ui.button('生成随机十六进制', generateHex),
         ui.spacer(),
@@ -4249,9 +4356,7 @@ var GN = { tools: [], lib: {}, groups: [] };
       ));
       root.appendChild(message);
       root.appendChild(output);
-      root.appendChild(ui.hint('随机源：' + source.label + '。' +
-        (source.degraded ? '宿主未提供 getRandomValues，已降级为伪随机，' + '不要用于密钥、令牌等安全场景。' : '') +
-        'UUID v4 的版本位固定为 4、变体位固定为 8/9/a/b；去连字符与大小写只影响显示。'));
+      root.appendChild(ui.hint('宿主未提供随机源时会降级为伪随机，不要用于密钥或令牌。'))
     }
   });
 })(GN);
@@ -4493,7 +4598,7 @@ var GN = { tools: [], lib: {}, groups: [] };
         ui.field('目标进制', toSelect)
       ));
       root.appendChild(ui.row(
-        ui.button('转换', run, 'primary'),
+        ui.button('转换', run),
         ui.button('清空', function () {
           input.value = '';
           output.setText('');
@@ -4506,8 +4611,7 @@ var GN = { tools: [], lib: {}, groups: [] };
       root.appendChild(message);
       root.appendChild(output);
       root.appendChild(details);
-      root.appendChild(ui.hint('0x / 0b / 0o 前缀自动识别；全过程使用 BigInt，超过 2^53 的整数不会丢精度。' +
-        '「UTF-8 解码」把该数当作大端字节序列解成字符，解不通时给出原因而不是替换成问号。'));
+      root.appendChild(ui.hint('自动识别 0x / 0b / 0o 前缀；全程 BigInt，超过 2^53 不会丢精度。'))
       run();
     }
   });
@@ -4857,7 +4961,7 @@ var GN = { tools: [], lib: {}, groups: [] };
       root.appendChild(ui.row(
         ui.label('颜色'),
         input,
-        ui.button('转换', run, 'primary'),
+        ui.button('转换', run),
         ui.button('随机颜色', function () {
           input.value = toHex(randomColor());
           run();
@@ -4868,9 +4972,7 @@ var GN = { tools: [], lib: {}, groups: [] };
       root.appendChild(ui.row(swatch, readout, ui.spacer()));
       root.appendChild(message);
       root.appendChild(output);
-      root.appendChild(ui.hint('支持 #rgb / #rgba / #rrggbb / #rrggbbaa / rgb() / rgba() / hsl() / hsla()，' +
-        '其中十六进制的 alpha 为两位（如 #3399cc80 表示半透明）。' +
-        '可读性按相对亮度（WCAG）计算：亮度高于 0.179 建议用深色文字，否则用浅色文字。'));
+      root.appendChild(ui.hint('支持 #rgb / #rrggbb / #rrggbbaa 与 rgb()、hsl() 写法。'))
       run();
     }
   });

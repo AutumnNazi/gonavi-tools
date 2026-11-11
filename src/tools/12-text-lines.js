@@ -128,7 +128,7 @@
         ui.spacer()
       ));
       root.appendChild(ui.row(
-        ui.button('转 SQL IN 列表', function () { applyLines('转 IN 列表', toInList); }, 'primary'),
+        ui.button('转 SQL IN 列表', function () { applyLines('转 IN 列表', toInList); }),
         ui.button('清空', function () {
           input.value = '';
           message.clear();
@@ -137,9 +137,7 @@
         ui.copyButton(function () { return input.value; })
       ));
       root.appendChild(message);
-      root.appendChild(ui.hint('所有操作都是就地处理当前文本，处理完可以继续叠加下一个操作。' +
-        '去重保留首次出现的顺序；排序按字符码序；去空行会把只有空白的行也去掉；合并为一行用你填的分隔符；' +
-        '转 SQL IN 列表会把每行包成 \'x\', 并把行内单引号转义成两个单引号。'));
+      root.appendChild(ui.hint('操作就地生效，可连续叠加；去重保留首次出现顺序，排序按字符码序。'));
     }
   });
 })(GN);

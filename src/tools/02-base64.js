@@ -95,7 +95,7 @@
       }
 
       root.appendChild(ui.row(
-        ui.button('编码为 Base64', function () { run(function (t) { return encodeText(t, urlSafe); }, '编码'); }, 'primary'),
+        ui.button('编码为 Base64', function () { run(function (t) { return encodeText(t, urlSafe); }, '编码'); }),
         ui.button('解码为文本', function () { run(function (t) { return decodeText(t, urlSafe); }, '解码'); }),
         ui.checkbox('URL-safe（- _ 且去掉 = 填充）', false, function (event) { urlSafe = event.target.checked; }),
         ui.spacer()
@@ -113,8 +113,7 @@
       ));
       root.appendChild(message);
       root.appendChild(output);
-      root.appendChild(ui.hint('按 UTF-8 字节编解码，中文与 emoji 都能往返。开启 URL-safe 后使用 - 和 _，' +
-        '并去掉 = 填充；解码时两种字母表都能识别，非法 Base64 或非法 UTF-8 字节会直接报错而不是返回空串。'));
+      root.appendChild(ui.hint('按 UTF-8 编解码；URL-safe 用 - 和 _ 并去掉 = 填充。非法输入会报错，而不是返回空串。'))
     }
   });
 })(GN);

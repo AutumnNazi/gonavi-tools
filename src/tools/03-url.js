@@ -137,7 +137,7 @@
       root.appendChild(ui.label('URI 编解码'));
       root.appendChild(uriInput);
       root.appendChild(ui.row(
-        ui.button('encodeURIComponent', function () { runUri(encodeComponent, '编码'); }, 'primary'),
+        ui.button('encodeURIComponent', function () { runUri(encodeComponent, '编码'); }),
         ui.button('decodeURIComponent', function () { runUri(decodeComponent, '解码'); }),
         ui.button('encodeURI', function () { runUri(encodeFull, '编码'); }),
         ui.button('decodeURI', function () { runUri(decodeFull, '解码'); }),
@@ -146,8 +146,7 @@
       ));
       root.appendChild(uriMessage);
       root.appendChild(uriOutput);
-      root.appendChild(ui.hint('encodeURIComponent 会转义 : / ? # & = 等保留字符，适合编单个参数值；' +
-        'encodeURI 保留这些保留字符，适合编整条地址。'));
+      root.appendChild(ui.hint('编单个参数值用 encodeURIComponent，编整条地址用 encodeURI。'))
 
       var urlInput = ui.input({ placeholder: '输入完整 URL，例如 https 开头的地址', value: '' });
       var urlTable = ui.output();
@@ -188,7 +187,7 @@
       root.appendChild(ui.label('完整 URL 解析'));
       root.appendChild(urlInput);
       root.appendChild(ui.row(
-        ui.button('解析 URL', showUrl, 'primary'),
+        ui.button('解析 URL', showUrl),
         ui.button('示例', function () {
           urlInput.value = 'https' + '://user:pw@例子.测试:8443/a/b?x=1&中文=%E4%B8%AD#片段';
           showUrl();
@@ -250,7 +249,7 @@
       root.appendChild(ui.label('查询串 ↔ 参数表'));
       root.appendChild(queryInput);
       root.appendChild(ui.row(
-        ui.button('解析查询串', doParseQuery, 'primary'),
+        ui.button('解析查询串', doParseQuery),
         ui.button('拼成查询串', doBuildQuery),
         ui.copyButton(function () { return queryInput.value; }, '复制查询串'),
         ui.button('清空', function () {

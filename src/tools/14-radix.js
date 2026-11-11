@@ -234,7 +234,7 @@
         ui.field('目标进制', toSelect)
       ));
       root.appendChild(ui.row(
-        ui.button('转换', run, 'primary'),
+        ui.button('转换', run),
         ui.button('清空', function () {
           input.value = '';
           output.setText('');
@@ -247,8 +247,7 @@
       root.appendChild(message);
       root.appendChild(output);
       root.appendChild(details);
-      root.appendChild(ui.hint('0x / 0b / 0o 前缀自动识别；全过程使用 BigInt，超过 2^53 的整数不会丢精度。' +
-        '「UTF-8 解码」把该数当作大端字节序列解成字符，解不通时给出原因而不是替换成问号。'));
+      root.appendChild(ui.hint('自动识别 0x / 0b / 0o 前缀；全程 BigInt，超过 2^53 不会丢精度。'))
       run();
     }
   });

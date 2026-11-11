@@ -74,6 +74,24 @@
     }
   ];
 
+  // 秒字段只在勾选「6 段写法」时参与；结构与其它字段完全一致，拼装与校验复用同一套逻辑。
+  var SECOND_CONFIG = {
+    key: 'second',
+    name: '秒',
+    def: 'every',
+    step: 30,
+    custom: '0,30',
+    modes: [
+      { id: 'every', label: '每秒', value: '*', fixed: '每秒' },
+      { id: 'step', label: '每隔 N 秒', param: 'step', paramLabel: '每隔 N 秒（填 1-59 的整数）' },
+      { id: 'custom', label: '指定秒', param: 'custom', paramLabel: '秒列表（如 0,15,30 或 0-30/5）' }
+    ]
+  };
+
+  function activeFields(withSeconds) {
+    return withSeconds === true ? [SECOND_CONFIG].concat(FIELD_CONFIG) : FIELD_CONFIG.slice();
+  }
+
   function findMode(config, id) {
     for (var i = 0; i < config.modes.length; i++) {
       if (config.modes[i].id === id) { return config.modes[i]; }
@@ -81,8 +99,8 @@
     return null;
   }
 
-  function defaultStates() {
-    return FIELD_CONFIG.map(function (config) {
+  function defaultStates(withSeconds) {
+    return activeFields(withSeconds).map(function (config) {
       return { mode: config.def, step: config.step, custom: config.custom };
     });
   }
@@ -106,9 +124,10 @@
     return mode.value;
   }
 
-  function buildExpression(states) {
-    var list = states && states.length === FIELD_CONFIG.length ? states : defaultStates();
-    return FIELD_CONFIG.map(function (config, index) {
+  function buildExpression(states, withSeconds) {
+    var configs = activeFields(withSeconds);
+    var list = states && states.length === configs.length ? states : defaultStates(withSeconds);
+    return configs.map(function (config, index) {
       return fieldExpression(config, list[index]);
     }).join(' ');
   }
@@ -127,12 +146,16 @@
     desc: '按字段预设拼出表达式，实时校验并预览执行时间',
     api: {
       fields: FIELD_CONFIG,
+      secondField: SECOND_CONFIG,
+      fieldsFor: activeFields,
       defaults: defaultStates,
       build: buildExpression
     },
     mount: function (root) {
       var ui = GN.ui;
-      var states = defaultStates();
+      // cron 的隐含写法就是 6 段（秒 分 时 日 月 周）；这个开关用来切回 5 段的 crontab 写法。
+      var withSeconds = true;
+      var states = defaultStates(withSeconds);
       var selects = [];
       var stepInputs = [];
       var customInputs = [];
@@ -147,44 +170,62 @@
 
       // 五个字段铺成网格卡片：一行能放下多个字段，避免五个字段各占三行把界面撑长
       var fieldGrid = ui.grid();
-      root.appendChild(ui.hint('每个卡片是一个 Cron 字段：先选预设；只有预设需要用参数时才会出现输入框，输入框上方写了它的用途和可填格式。'));
 
-      FIELD_CONFIG.forEach(function (config, index) {
-        var select = ui.select(
-          config.modes.map(function (mode) { return { value: mode.id, label: mode.label }; }),
-          states[index].mode,
-          function () {
-            states[index].mode = select.value;
-            update();
-          }
-        );
-        var stepInput = ui.input({
-          type: 'number',
-          value: String(config.step),
-          oninput: function () {
-            states[index].step = stepInput.value;
-            update();
-          }
-        });
-        var customInput = ui.input({
-          value: config.custom,
-          placeholder: '例如 ' + config.custom,
-          oninput: function () {
-            states[index].custom = customInput.value;
-            update();
-          }
-        });
-        selects.push(select);
-        stepInputs.push(stepInput);
-        customInputs.push(customInput);
-        slots.push(ui.col());
-        fieldTexts.push(ui.label(''));
-        fieldGrid.appendChild(ui.col(ui.label(config.name), select, slots[index], fieldTexts[index]));
+      var fiveFieldToggle = ui.checkbox('用 5 段写法（分 时 日 月 周，不含秒）', false, function () {
+        withSeconds = !this.checked;
+        states = defaultStates(withSeconds);
+        buildCards();
+        update();
       });
+      root.appendChild(ui.row(ui.label('写法'), fiveFieldToggle, ui.spacer()));
+
+      // 卡片按当前写法重建：切到 6 段会多出「秒」卡片，切回 5 段时它直接不进入 DOM。
+      function buildCards() {
+        fieldGrid.textContent = '';
+        selects = [];
+        stepInputs = [];
+        customInputs = [];
+        slots = [];
+        fieldTexts = [];
+        renderedMode = [];
+        activeFields(withSeconds).forEach(function (config, index) {
+          var select = ui.select(
+            config.modes.map(function (mode) { return { value: mode.id, label: mode.label }; }),
+            states[index].mode,
+            function () {
+              states[index].mode = select.value;
+              update();
+            }
+          );
+          var stepInput = ui.input({
+            type: 'number',
+            value: String(config.step),
+            oninput: function () {
+              states[index].step = stepInput.value;
+              update();
+            }
+          });
+          var customInput = ui.input({
+            value: config.custom,
+            placeholder: '例如 ' + config.custom,
+            oninput: function () {
+              states[index].custom = customInput.value;
+              update();
+            }
+          });
+          selects.push(select);
+          stepInputs.push(stepInput);
+          customInputs.push(customInput);
+          slots.push(ui.col());
+          fieldTexts.push(ui.label(''));
+          fieldGrid.appendChild(ui.col(ui.label(config.name), select, slots[index], fieldTexts[index]));
+        });
+      }
+      buildCards();
       root.appendChild(fieldGrid);
 
       function currentMode(index) {
-        var config = FIELD_CONFIG[index];
+        var config = activeFields(withSeconds)[index];
         return findMode(config, states[index].mode) || findMode(config, config.def);
       }
 
@@ -202,8 +243,9 @@
       }
 
       function update() {
-        for (var i = 0; i < FIELD_CONFIG.length; i++) { syncParam(i); }
-        var expr = buildExpression(states);
+        var configs = activeFields(withSeconds);
+        for (var i = 0; i < configs.length; i++) { syncParam(i); }
+        var expr = buildExpression(states, withSeconds);
         exprOut.setText(expr);
         checkBox.textContent = '';
         var checked = cron.validate(expr);
@@ -239,8 +281,8 @@
       }
 
       function reset() {
-        states = defaultStates();
-        FIELD_CONFIG.forEach(function (config, index) {
+        states = defaultStates(withSeconds);
+        activeFields(withSeconds).forEach(function (config, index) {
           selects[index].value = states[index].mode;
           stepInputs[index].value = String(states[index].step);
           customInputs[index].value = states[index].custom;
@@ -250,7 +292,7 @@
 
       root.appendChild(ui.row(
         ui.label('生成表达式'),
-        ui.copyButton(function () { return buildExpression(states); }, '复制表达式'),
+        ui.copyButton(function () { return buildExpression(states, withSeconds); }, '复制表达式'),
         ui.button('重置为默认', reset),
         ui.spacer()
       ));
@@ -261,8 +303,7 @@
       root.appendChild(ui.label('接下来 ' + RUN_COUNT + ' 次执行时间（本地时区）'));
       root.appendChild(ui.scroll(runBox));
       root.appendChild(message);
-      root.appendChild(ui.hint('日与周都写成具体值时，按标准 cron 的「或」语义执行：满足其一即执行。' +
-        '自定义输入框留空会退回「不限」，所以任何时候生成的表达式都能通过校验。'));
+      root.appendChild(ui.hint('日与周都写成具体值时按「或」语义执行；自定义留空退回「不限」。'))
 
       update();
     }

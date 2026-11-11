@@ -284,7 +284,7 @@
           message.show(result.message, result.ok ? 'ok' : 'error');
         }),
         ui.button('键排序', function () { run(function (t) { return sortJson(t, indentKey); }, '键排序'); }),
-        ui.button('格式化', function () { run(function (t) { return formatJson(t, indentKey); }, '格式化'); }, 'primary'),
+        ui.button('格式化', function () { run(function (t) { return formatJson(t, indentKey); }, '格式化'); }),
         ui.button('压缩', function () { run(minifyJson, '压缩'); }),
         ui.spacer(),
         indentSelect
@@ -303,8 +303,7 @@
       ));
       root.appendChild(message);
       root.appendChild(output);
-      root.appendChild(ui.hint('转义输出的是带引号的 JSON 字符串字面量，可直接粘进 JSON 或代码。' +
-        '格式化会先解析再重建，超过 2^53 的整数可能丢精度，这种数据请用「校验」而不是「格式化」。'));
+      root.appendChild(ui.hint('转义输出带引号的 JSON 字面量；格式化会重建文本，超过 2^53 的整数可能丢精度。'))
     }
   });
 })(GN);

@@ -10,6 +10,7 @@
   --bg-input: #ffffff;
   --bg-soft: #f7f8fa;
   --bg-sunken: #f1f3f5;
+  --hover: #f1f3f5;
   --border: #e3e6ea;
   --border-strong: #cfd4da;
 
@@ -40,6 +41,7 @@
     --bg-input: #1b1d1f;
     --bg-soft: #222528;
     --bg-sunken: #17191b;
+    --hover: #26292c;
     --border: #34383c;
     --border-strong: #454a4f;
 
@@ -162,10 +164,6 @@ html, body {
 }
 .tb-btn:hover { border-color: var(--brand); color: var(--brand); }
 .tb-btn:active { transform: translateY(1px); }
-.tb-btn--primary { background: var(--brand); border-color: var(--brand); color: var(--brand-text); font-weight: 600; }
-.tb-btn--primary:hover {
-  color: var(--brand-text); border-color: var(--brand); filter: brightness(.93);
-}
 .tb-btn--danger:hover { border-color: var(--danger); color: var(--danger); }
 .tb-btn:disabled { opacity: .5; cursor: not-allowed; }
 

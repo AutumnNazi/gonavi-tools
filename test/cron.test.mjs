@@ -48,7 +48,7 @@ test('validate 拒绝非法写法并给出中文原因', () => {
     ['', /为空/],
     ['   ', /为空/],
     ['* * * *', /5 个字段/],
-    ['* * * * * *', /5 个字段/],
+    ['0 0 9 * * 1-5 2026', /5 个字段/],
     ['@daily', /5 个字段/],
     ['60 * * * *', /超出 0-59/],
     ['* 24 * * *', /超出 0-23/],
@@ -236,7 +236,78 @@ test('07-cron 的 api 复用核心，非法表达式只提示不抛异常', () =
   api.templates.forEach((item) => {
     assert.equal(api.validate(item.expr).ok, true, item.label + ' 的模板不合法：' + item.expr);
   });
-  assert.equal(api.templates.length, 6);
+  assert.equal(api.templates.length, 8);
+});
+
+test('支持 6 段写法（秒 分 时 日 月 周，Quartz / Spring）', () => {
+  const six = [
+    '* * * * * *',
+    '*/30 * * * * *',
+    '0 * * * * *',
+    '0 0 9 * * 1-5',
+    '30 0 9 * * *',
+    '0 0 12 * * ?'
+  ];
+  six.forEach((expr) => {
+    const result = cron.validate(expr);
+    assert.equal(result.ok, true, expr + ' 被判为非法：' + result.message);
+  });
+  // 7 段（带年份）仍然拒绝，并说明支持的是哪两种写法
+  assert.match(cron.validate('0 0 9 * * 1-5 2026').message, /5 个字段/);
+
+  const fields = cron.parse('0 0 9 * * 1-5');
+  assert.equal(fields.length, 6);
+  assert.equal(fields.hasSeconds, true);
+  assert.equal(fields[0].name, '秒');
+  assert.equal(fields[1].name, '分钟');
+  assert.equal(fields[5].name, '星期');
+  assert.equal(cron.parse('0 9 * * 1-5').hasSeconds, false, '5 段写法不应带秒字段');
+
+  assert.equal(cron.describe('0 0 9 * * 1-5'), '每周一至周五的 09:00:00 执行');
+  assert.equal(cron.describe('*/30 * * * * *'), '每 30 秒执行');
+  assert.equal(cron.describe('* * * * * *'), '每秒执行');
+  assert.equal(cron.describe('0 * * * * *'), '每分钟执行');
+});
+
+test('6 段写法的 nextRuns 走到秒粒度', () => {
+  const base = at(2024, 3, 1);
+  // list 辅助函数只格式化到分钟，秒级断言直接看 Date 的时分秒
+  const two = (value) => (value < 10 ? '0' : '') + value;
+  const clock = (runs) => runs.map((date) =>
+    two(date.getHours()) + ':' + two(date.getMinutes()) + ':' + two(date.getSeconds()));
+  assert.deepEqual(
+    clock(cron.nextRuns('*/30 * * * * *', 4, base)),
+    ['00:00:30', '00:01:00', '00:01:30', '00:02:00']
+  );
+  assert.deepEqual(
+    clock(cron.nextRuns('5 0 9 * * *', 2, base)),
+    ['09:00:05', '09:00:05']
+  );
+  // 5 段写法的秒恒为 0，与等价的 6 段写法结果必须完全一致
+  assert.deepEqual(
+    list(cron.nextRuns('0 9 * * 1-5', 3, base)),
+    list(cron.nextRuns('0 0 9 * * 1-5', 3, base))
+  );
+});
+
+test('08-cron-builder 支持切换到 6 段写法', () => {
+  const api = builderTool.api;
+  assert.equal(api.build(api.defaults(), false), '* * * * *');
+  assert.equal(api.build(api.defaults(true), true), '* * * * * *');
+  assert.equal(api.fieldsFor(false).length, 5);
+  assert.equal(api.fieldsFor(true).length, 6);
+  assert.equal(api.fieldsFor(true)[0].name, '秒');
+
+  // 6 段下每种预设组合仍要产出合法表达式，且恰好 6 段
+  api.fieldsFor(true).forEach((config, index) => {
+    config.modes.forEach((mode) => {
+      const states = api.defaults(true);
+      states[index] = { mode: mode.id, step: 7, custom: config.custom };
+      const expr = api.build(states, true);
+      assert.equal(expr.split(' ').length, 6, expr);
+      assert.equal(cron.validate(expr).ok, true, config.name + ' + ' + mode.label + ' 拼出非法表达式：' + expr);
+    });
+  });
 });
 
 test('08-cron-builder 工具声明符合契约', () => {
@@ -373,10 +444,10 @@ test('mount：Cron 解析工具在最小 DOM 替身上能构造界面并响应�
 
     const descOut = collect(host, (node) => node.className === 'tb-output')[0];
     const message = collect(host, (node) => node.className.indexOf('tb-msg') === 0)[0];
-    // 默认表达式 */5 * * * *：描述、提示与两张表（5 个字段 + 10 次执行时间）都要出来
-    assert.equal(descOut.textContent, '每 5 分钟执行');
+    // 默认表达式 0 0 9 * * 1-5（6 段写法）：描述、提示与两张表（6 个字段 + 10 次执行时间）都要出来
+    assert.equal(descOut.textContent, '每周一至周五的 09:00:00 执行');
     assert.match(message.textContent, /表达式合法/);
-    assert.equal(collect(host, (node) => node.tagName === 'tr').length, 17);
+    assert.equal(collect(host, (node) => node.tagName === 'tr').length, 18);
 
     findByText(host, 'button', '每天 0 点').fire('click');
     assert.equal(descOut.textContent, '在 00:00 执行');
@@ -402,7 +473,8 @@ test('mount：Cron 生成工具的参数控件只在需要时出现且都带中�
     const outputs = collect(host, (node) => node.className === 'tb-output');
     const badgeText = () => collect(host, (node) => node.className.indexOf('tb-badge') === 0)[0].textContent;
     const selects = collect(host, (node) => node.tagName === 'select');
-    const inputs = () => collect(host, (node) => node.tagName === 'input');
+    // 只统计参数输入框：顶部的写法开关是 checkbox，不属于「需要参数时才出现的输入框」
+    const inputs = () => collect(host, (node) => node.tagName === 'input' && node.attrs.type !== 'checkbox');
     // 输入框必须落在 GN.ui.field 生成的 <label class="tb-field"> 里，且标签文字非空
     const labelTextOf = (node) => {
       let parent = node.parentNode;
@@ -416,16 +488,16 @@ test('mount：Cron 生成工具的参数控件只在需要时出现且都带中�
       return null;
     };
 
-    assert.equal(selects.length, 5, '五个字段各一个预设下拉');
+    assert.equal(selects.length, 6, '默认 6 段写法：秒/分钟/小时/日/月/周 各一个预设下拉');
     assert.equal(outputs.length, 2, '表达式与中文描述各一个输出区');
-    assert.equal(outputs[0].textContent, '* * * * *');
-    assert.equal(outputs[1].textContent, '每分钟执行');
+    assert.equal(outputs[0].textContent, '* * * * * *');
+    assert.equal(outputs[1].textContent, '每秒执行');
     assert.match(badgeText(), /通过校验/);
-    // 默认五个字段都是「不需要额外参数」的预设：界面上一个输入框都不该有
+    // 默认每个字段都是「不需要额外参数」的预设：界面上一个输入框都不该有
     assert.equal(inputs().length, 0, '默认状态下不应出现任何输入框');
 
     // 逐个字段、逐个预设核对可见控件集合：需要参数时只出现一个带中文标签的输入框
-    api.fields.forEach((config, index) => {
+    api.fieldsFor(true).forEach((config, index) => {
       config.modes.forEach((mode) => {
         selects[index].value = mode.id;
         selects[index].fire('change');
@@ -446,32 +518,50 @@ test('mount：Cron 生成工具的参数控件只在需要时出现且都带中�
       assert.equal(inputs().length, 0, config.name + ' 回到默认预设后输入框应消失');
     });
 
-    // 参数真的参与生成：分钟切「每隔 N 分钟」，再把 N 改成 15
-    selects[0].value = 'step';
-    selects[0].fire('change');
+    // 参数真的参与生成：分钟是 6 段写法下的第 2 个下拉（第 1 个是秒）
+    selects[1].value = 'step';
+    selects[1].fire('change');
     assert.equal(inputs()[0].attrs.type, 'number');
     inputs()[0].value = '15';
     inputs()[0].fire('input');
-    assert.equal(outputs[0].textContent, '*/15 * * * *');
+    assert.equal(outputs[0].textContent, '* */15 * * * *');
 
     // 切「指定分钟」后换成文本框，标签与取值都跟着变
-    selects[0].value = 'custom';
-    selects[0].fire('change');
+    selects[1].value = 'custom';
+    selects[1].fire('change');
     assert.equal(labelTextOf(inputs()[0]), '分钟列表（如 0,15,30 或 0-30/5）');
-    assert.equal(outputs[0].textContent, '0,30 * * * *');
+    assert.equal(outputs[0].textContent, '* 0,30 * * * *');
 
-    // 周字段切到「工作日」这种固定值预设，不应该出现输入框
-    selects[4].value = 'workday';
-    selects[4].fire('change');
-    assert.equal(outputs[0].textContent, '0,30 * * * 1-5');
+    // 周字段（6 段写法下的最后一个下拉）切到「工作日」这种固定值预设，不应该出现输入框
+    selects[5].value = 'workday';
+    selects[5].fire('change');
+    assert.equal(outputs[0].textContent, '* 0,30 * * * 1-5');
     assert.equal(inputs().length, 1, '工作日预设不应再添输入框');
 
     // 自定义写成非法值时必须报错而不是崩
     inputs()[0].value = '99';
     inputs()[0].fire('input');
-    assert.equal(outputs[0].textContent, '99 * * * 1-5');
+    assert.equal(outputs[0].textContent, '* 99 * * * 1-5');
     assert.match(badgeText(), /未通过/);
     const message = collect(host, (node) => node.className.indexOf('tb-msg') === 0)[0];
     assert.match(message.textContent, /未通过校验/);
+
+    // 勾选「用 5 段写法」后切回 5 段：秒卡片消失、表达式回到 5 段、描述跟着变
+    const toggle = collect(host, (node) => node.tagName === 'input' && node.attrs.type === 'checkbox')[0];
+    assert.ok(toggle, '缺少「用 5 段写法」开关');
+    assert.equal(toggle.checked, false, '默认不应勾选：隐含就是 6 段');
+    toggle.checked = true;
+    toggle.fire('change');
+    assert.equal(collect(host, (node) => node.tagName === 'select').length, 5, '切到 5 段后应剩 5 个下拉');
+    assert.equal(collect(host, (node) => node.tagName === 'input' && node.attrs.type !== 'checkbox').length, 0);
+    assert.equal(cron.parse(outputs[0].textContent).hasSeconds, false, '切到 5 段后表达式不应带秒');
+    assert.equal(outputs[0].textContent, '* * * * *');
+    assert.equal(outputs[1].textContent, '每分钟执行');
+
+    // 再切回 6 段
+    toggle.checked = false;
+    toggle.fire('change');
+    assert.equal(collect(host, (node) => node.tagName === 'select').length, 6, '切回 6 段后应恢复 6 个下拉');
+    assert.equal(outputs[0].textContent, '* * * * * *');
   });
 });

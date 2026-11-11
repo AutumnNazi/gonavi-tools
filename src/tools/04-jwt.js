@@ -178,7 +178,7 @@
       root.appendChild(warning);
       root.appendChild(input);
       root.appendChild(ui.row(
-        ui.button('解码', run, 'primary'),
+        ui.button('解码', run),
         ui.copyButton(function () { return payloadOut.textContent; }, '复制 payload'),
         ui.button('清空', function () {
           input.value = '';
@@ -205,8 +205,7 @@
         ui.label('签名'),
         signatureOut
       ));
-      root.appendChild(ui.hint('签名段在这里只做展示：JWT 的签名校验需要密钥，本插件不联网也不读取任何密钥。' +
-        'exp / nbf 按本机时区显示，相对时间以打开或刷新时刻为准。'));
+      root.appendChild(ui.hint('只做解码，不验证签名：校验签名需要密钥，本插件不联网也不读取密钥。'))
     }
   });
 })(GN);

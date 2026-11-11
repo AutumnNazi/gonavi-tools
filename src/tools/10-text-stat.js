@@ -131,9 +131,7 @@
       ));
       root.appendChild(message);
       root.appendChild(tableBox);
-      root.appendChild(ui.hint('字符数按 Unicode 代码点计（一个 emoji 记 1 个字符）；字节数按 UTF-8 编码规则计；' +
-        '行以 CRLF / LF / CR 分隔，末尾换行不额外算一行；中文字符只统计 CJK 统一表意文字（含扩展区与兼容汉字）；' +
-        '词数按空白字符分隔统计，因此整行中文会被记作 1 个词。'));
+      root.appendChild(ui.hint('字符按 Unicode 代码点计（emoji 记 1 个）；字节按 UTF-8；行按 CRLF / LF / CR 分隔。'))
 
       refresh();
     }

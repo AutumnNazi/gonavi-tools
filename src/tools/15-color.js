@@ -341,7 +341,7 @@
       root.appendChild(ui.row(
         ui.label('颜色'),
         input,
-        ui.button('转换', run, 'primary'),
+        ui.button('转换', run),
         ui.button('随机颜色', function () {
           input.value = toHex(randomColor());
           run();
@@ -352,9 +352,7 @@
       root.appendChild(ui.row(swatch, readout, ui.spacer()));
       root.appendChild(message);
       root.appendChild(output);
-      root.appendChild(ui.hint('支持 #rgb / #rgba / #rrggbb / #rrggbbaa / rgb() / rgba() / hsl() / hsla()，' +
-        '其中十六进制的 alpha 为两位（如 #3399cc80 表示半透明）。' +
-        '可读性按相对亮度（WCAG）计算：亮度高于 0.179 建议用深色文字，否则用浅色文字。'));
+      root.appendChild(ui.hint('支持 #rgb / #rrggbb / #rrggbbaa 与 rgb()、hsl() 写法。'))
       run();
     }
   });

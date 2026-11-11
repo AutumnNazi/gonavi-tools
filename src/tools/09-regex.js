@@ -227,13 +227,11 @@
       root.appendChild(ui.scroll(listBox));
       root.appendChild(ui.row(
         ui.field('替换为', replaceInput),
-        ui.button('替换到原文', applyReplace, 'primary'),
+        ui.button('替换到原文', applyReplace),
         ui.copyButton(function () { return replaceOutput.textContent; }, '复制替换结果')
       ));
       root.appendChild(replaceOutput);
-      root.appendChild(ui.hint('勾选 g 时查找并高亮全部匹配，未勾选 g 只处理第一处（与 JS 语义一致）；' +
-        '替换则始终替换全部匹配。零宽匹配（例如 a*、^、(?=x)）没有可高亮的文本，用竖线标记出位置。' +
-        '高亮与清单都用 DOM 文本节点拼装，原文不会被当作 HTML 解析。'));
+      root.appendChild(ui.hint('未勾选 g 只处理第一处匹配；替换始终替换全部。零宽匹配用竖线标出位置。'))
 
       refresh();
     }
