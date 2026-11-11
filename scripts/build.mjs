@@ -85,12 +85,10 @@ fs.mkdirSync(path.join(packageDir, 'icons'), { recursive: true });
 fs.writeFileSync(path.join(packageDir, 'gonavi.plugin.json'), manifestText, 'utf8');
 fs.copyFileSync(path.join(root, 'assets/toolbox.png'), path.join(packageDir, 'icons/toolbox.png'));
 
-// 作者指南要求压缩包根目录随包分发 LICENSE；用了第三方资源片段还要附声明。
-for (const name of ['LICENSE', 'THIRD_PARTY_NOTICES']) {
-  const source = path.join(root, name);
-  if (!fs.existsSync(source)) { throw new Error('缺少必须随包分发的文件：' + name); }
-  fs.copyFileSync(source, path.join(packageDir, name));
-}
+// 作者指南要求压缩包根目录随包分发 LICENSE。图标为自绘，不再需要第三方声明文件。
+const licenseSource = path.join(root, 'LICENSE');
+if (!fs.existsSync(licenseSource)) { throw new Error('缺少必须随包分发的文件：LICENSE'); }
+fs.copyFileSync(licenseSource, path.join(packageDir, 'LICENSE'));
 
 console.log('已构建 ' + toolFiles.length + ' 个工具（lib ' + libFiles.length + ' 个文件）');
 console.log('  dist/preview.html      ' + pageBytes + ' 字节 / 上限 262144');
