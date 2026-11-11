@@ -36,7 +36,7 @@
 gonavi plugin --root <插件根> check dist/package
 gonavi plugin --root <插件根> inspect dist/package
 gonavi plugin --root <插件根> install --digest <上一步的 digest> --trust dist/package
-gonavi plugin --root <插件根> enable dev.gonavi-toolbox
+gonavi plugin --root <插件根> enable gh-autumnnazi.toolbox
 ```
 
 ## 工具清单

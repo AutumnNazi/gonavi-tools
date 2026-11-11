@@ -49,7 +49,8 @@ fs.writeFileSync(path.join(root, 'dist/preview.html'), page, 'utf8');
 const manifest = {
   schemaVersion: 1,
   apiVersion: 1,
-  id: 'dev.gonavi-toolbox',
+  // 命名空间用发布者的 GitHub 账号，与市场上其它插件的 id 风格保持一致
+  id: 'gh-autumnnazi.toolbox',
   name: '开发者工具箱',
   version: pkg.version,
   description: '纯前端开发者工具箱：JSON、Cron、时间戳、哈希、Base64、URL、JWT、正则、文本与进制转换，全部在本机完成，不联网、无后端进程。',
