@@ -278,13 +278,14 @@
       ], indentKey, function () { indentKey = indentSelect.value; });
 
       root.appendChild(ui.row(
+        // 先只读校验（不动数据），再结构整理，最后是互为反向的 格式化 / 压缩。
         ui.button('校验', function () {
           var result = validateJson(input.value);
           message.show(result.message, result.ok ? 'ok' : 'error');
         }),
+        ui.button('键排序', function () { run(function (t) { return sortJson(t, indentKey); }, '键排序'); }),
         ui.button('格式化', function () { run(function (t) { return formatJson(t, indentKey); }, '格式化'); }, 'primary'),
         ui.button('压缩', function () { run(minifyJson, '压缩'); }),
-        ui.button('键排序', function () { run(function (t) { return sortJson(t, indentKey); }, '键排序'); }),
         ui.spacer(),
         indentSelect
       ));
