@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>开发者工具箱</title>
+<style>
+__STYLES__
+</style>
+</head>
+<body>
+<div class="tb-app">
+  <header class="tb-head">
+    <div class="tb-brand">
+      <span class="tb-logo" aria-hidden="true"></span>
+      <span class="tb-brand-text">
+        <span class="tb-title">开发者工具箱</span>
+        <span class="tb-sub">JSON · Cron · 时间戳 · 哈希 · 编码 · 文本</span>
+      </span>
+    </div>
+    <div class="tb-head-right">
+      <input id="tb-search" class="tb-search" type="search" placeholder="搜索工具…" autocomplete="off" spellcheck="false">
+      <span class="tb-offline" title="页面内所有计算都在本机完成，不发起任何网络请求">本地离线</span>
+    </div>
+  </header>
+  <nav id="tb-groups" class="tb-groups" aria-label="工具分组"></nav>
+  <nav id="tb-tabs" class="tb-tabs" aria-label="工具切换"></nav>
+  <main id="tb-panel" class="tb-panel"></main>
+  <footer id="tb-status" class="tb-status">就绪</footer>
+</div>
+<script>
+/* 引导：lib 与 tools 模块都以 (function (GN) {...})(GN) 直接引用全局 GN，
+   所以必须先建立这个命名空间，app.js 会用同一对象继续填充。 */
+var GN = { tools: [], lib: {}, groups: [] };
+</script>
+<script>
+__LIB__
+</script>
+<script>
+__APP__
+</script>
+<script>
+__TOOLS__
+</script>
+</body>
+</html>

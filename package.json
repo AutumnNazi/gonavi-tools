@@ -1,0 +1,12 @@
+{
+  "name": "gonavi-toolbox",
+  "version": "0.1.0",
+  "private": true,
+  "description": "GoNavi 插件：纯前端开发者工具箱（JSON / Cron / 时间戳 / 哈希 / 编码 / 文本）",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "check": "node scripts/check.mjs",
+    "test": "node --test test/",
+    "verify": "node scripts/build.mjs && node --test test/ && node scripts/check.mjs"
+  }
+}
