@@ -54,8 +54,11 @@ const manifest = {
   name: '开发者工具箱',
   version: pkg.version,
   description: '纯前端开发者工具箱：JSON、Cron、时间戳、哈希、Base64、URL、JWT、正则、文本与进制转换，全部在本机完成，不联网、无后端进程。',
-  author: 'GoNavi Tools',
+  author: 'AutumnNazi',
   license: 'MIT',
+  // 与同作者的其它插件保持一致：声明最低宿主版本，并带一个包内图标
+  minHostVersion: '1.2.0',
+  icon: 'icons/toolbox.png',
   permissions: ['ui.pages', 'ui.html-panel'],
   permissionNotes: {
     'ui.pages': '在标题栏插件菜单里加入工具箱入口，并在主窗口以标签页打开。',
@@ -78,8 +81,9 @@ fs.writeFileSync(path.join(root, 'gonavi.plugin.json'), manifestText, 'utf8');
 // 单独输出一份可以避免把源码、测试与构建脚本一起装进插件库。
 const packageDir = path.join(root, 'dist/package');
 fs.rmSync(packageDir, { recursive: true, force: true });
-fs.mkdirSync(packageDir, { recursive: true });
+fs.mkdirSync(path.join(packageDir, 'icons'), { recursive: true });
 fs.writeFileSync(path.join(packageDir, 'gonavi.plugin.json'), manifestText, 'utf8');
+fs.copyFileSync(path.join(root, 'assets/toolbox.png'), path.join(packageDir, 'icons/toolbox.png'));
 
 console.log('已构建 ' + toolFiles.length + ' 个工具（lib ' + libFiles.length + ' 个文件）');
 console.log('  dist/preview.html      ' + pageBytes + ' 字节 / 上限 262144');
